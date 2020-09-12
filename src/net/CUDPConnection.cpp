@@ -65,7 +65,7 @@ void CUDPConnection::IUDPConnection(CUDPComm *theOwner) {
     maxValid = INITIAL_SERIAL_NUMBER-kSerialNumberStepSize;
 
     retransmitTime = kInitialRetransmitTime;
-    urgentRetransmitTime = kInitialRoundTripTime;
+    urgentRetransmitTime = kInitialRoundTripTime / 2;
     meanRoundTripTime = kInitialRoundTripTime;
     varRoundTripTime = meanRoundTripTime*meanRoundTripTime;
     haveToSendAck = false;
@@ -381,13 +381,14 @@ void CUDPConnection::ValidatePacket(UDPPacketInfo *thePacket, long when) {
             retransmitTime = std::max(retransmitTime, itsOwner->urgentResendTime);
             retransmitTime = std::min(retransmitTime, (long)kMaxAllowedRetransmitTime);
             
-            // If we want the game to stay smooth, resend urgent/game packets near the overall LT (max(RTT)/2) so that
-            // lost packets can be retransmitted and have a chance of getting there in time to be only 1 frame late.
-            // This may result in extra re-sends but should help the game flow, especially if a connection is dropping packets.
-            // This latency estimate goes across all active connections so that faster connections won't be penalized and 
+            // If we want the game to stay smooth, resend urgent/game packets near the overall LT (max(RTT)/2) - meanRoundTripTime/2
+            // so that lost packets can be retransmitted and have a chance of getting there within the same frame.
+            // This will result in extra re-sends but should help the game flow, especially if a connection is dropping packets.
+            // LatencyEstimate() goes across all active connections so that fast connections won't be penalized and 
             // have to re-send to each other as often.
-            urgentRetransmitTime = std::min(LatencyEstimate(), itsOwner->urgentResendTime);
-            urgentRetransmitTime = std::min(urgentRetransmitTime, (long)retransmitTime);
+            urgentRetransmitTime = std::min(LatencyEstimate() - long(meanRoundTripTime+stdevRoundTripTime)/2, itsOwner->urgentResendTime);
+            urgentRetransmitTime = std::max(urgentRetransmitTime, long(4));  // at least 16.667 msec (1 clock tick)
+            urgentRetransmitTime = std::min(urgentRetransmitTime, long(retransmitTime));
 
             #if PACKET_DEBUG || LATENCY_DEBUG
                 SDL_Log("                               cn=%d cmd=%d roundTrip=%ld mean=%.1f std = %.1f retransmitTime=%ld urgentRetransmit=%ld\n",
