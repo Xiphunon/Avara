@@ -364,9 +364,12 @@ void CUDPConnection::ValidatePacket(UDPPacketInfo *thePacket, long when) {
             // quicker to move up on latency spikes, slower to move down
             float alpha = itsOwner->frameTimeScale / ((difference > 0) ? RTTSMOOTHFACTOR_UP : RTTSMOOTHFACTOR_DOWN);
 
-            if (thePacket->sendCount > 1) {
-                // Don't ignore resent packets but de-weight them pretty heavily.
-                alpha /= (thePacket->sendCount*thePacket->sendCount);
+            // since we're likely sending duplicates for urgent packets, decrement sendCount for weighting purposes
+            int16_t adjCount = thePacket->sendCount;
+            if (thePacket->packet.flags & kpUrgentFlag) { adjCount--; }
+            if (adjCount > 1) {
+                // Don't ignore re-sent packets but de-weight them pretty heavily.
+                alpha /= (adjCount*adjCount);
             }
             
             float increment = alpha * difference;
@@ -391,7 +394,7 @@ void CUDPConnection::ValidatePacket(UDPPacketInfo *thePacket, long when) {
             urgentRetransmitTime = std::min(urgentRetransmitTime, long(retransmitTime));
 
             #if PACKET_DEBUG || LATENCY_DEBUG
-                SDL_Log("                               cn=%d cmd=%d roundTrip=%ld mean=%.1f std = %.1f retransmitTime=%ld urgentRetransmit=%ld\n",
+                SDL_Log("                               cn=%d cmd=%d roundTrip=%ld mean=%.1f std=%.1f retransmitTime=%ld urgentRetransmit=%ld\n",
                         myId, thePacket->packet.command, roundTrip, meanRoundTripTime, stdevRoundTripTime, retransmitTime, urgentRetransmitTime);
             #endif
         }
